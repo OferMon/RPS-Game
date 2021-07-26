@@ -1,0 +1,257 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title></title>
+    <script src="lib/jquery.js"></script>
+    <link href="lib/w3.css" rel="stylesheet" />
+
+    <script>
+
+        // Defaults
+        var scoresData = [];
+        var scoresDataVer;
+        var optimalScrollTop = 0;
+        var tempScrollTop;
+        var isEmpty = false;
+        var isMark = false;
+
+        $(document).ready(function () {           
+            if (localStorage.getItem("scoresData") != null) {
+                scoresDataVer = localStorage.getItem("scoresDataVer");
+                scoresData = JSON.parse(localStorage.getItem("scoresData") || "[]");
+                var lastPersonalRecord = -1;
+                var indexCounter = 0;
+                for (var i = 0; i < scoresData.length; i++) {
+                    if (scoresData[i].personalRecord != lastPersonalRecord) {
+                        indexCounter++;
+                        lastPersonalRecord = scoresData[i].personalRecord;
+                    }
+                    $("#scoresTableBody").append(createScoreTr(scoresData[i], indexCounter));
+                }
+            }
+            else if (localStorage.getItem("scoresDataVer") == null){
+                scoresDataVer = Math.random();
+                localStorage.setItem("scoresDataVer", scoresDataVer);
+            }
+
+            if (sessionStorage.getItem("playerName") != null) {
+                $("#playerName").val(sessionStorage.getItem("playerName"));
+                Typing();
+            }
+        });
+
+        function RefreshScoresData() {
+            if (scoresDataVer != parseFloat(localStorage.getItem("scoresDataVer"))) {
+                $("#scoresTableBody").empty();
+                scoresDataVer = parseFloat(localStorage.getItem("scoresDataVer"));
+                scoresData = JSON.parse(localStorage.getItem("scoresData") || "[]");
+                var lastPersonalRecord = -1;
+                var indexCounter = 0;
+                for (var i = 0; i < scoresData.length; i++) {
+                    if (scoresData[i].personalRecord != lastPersonalRecord) {
+                        indexCounter++;
+                        lastPersonalRecord = scoresData[i].personalRecord;
+                    }
+                    $("#scoresTableBody").append(createScoreTr(scoresData[i], indexCounter));
+                }
+
+                optimalScrollTop = 0;
+                Typing();
+
+                return true;
+            }
+            return false;
+        }
+
+        function createScoreTr(score, rating) {
+            return `<tr class="valueTr">
+              <td>${rating}</td>
+              <td>${score.playerName}</td>
+              <td>${score.personalRecord}</td>
+              <td>${score.playTime}</td>
+              <td>${score.scoreDate}</td>
+              </tr>`;
+        }
+
+        function Typing() {
+            var playerName = $("#playerName").val().toLowerCase();
+
+            if (!$("#tableDiv").is(':animated') && $("#tableDiv").scrollTop() != tempScrollTop) {
+                optimalScrollTop = $("#tableDiv").scrollTop();
+            }
+
+            if (playerName.length == 0) {
+                $("#startGameButton").prop("disabled", true);
+                if (isEmpty) {
+                    optimalScrollTop = 0;
+                }
+                isEmpty = true;
+            }
+            else {
+                $("#startGameButton").prop("disabled", false);
+                isEmpty = false;
+            }
+
+            isMark = false;
+            $("#scoresTable .valueTr").each(function () {
+                $(this).css("background-color","white");
+                if (this.children[1].innerHTML == playerName) {
+                    isMark = true;
+                    $(this).css("background-color", "lightgray");
+
+                    var elementTop = this.offsetTop;
+                    var tableHeight = $("#tableDiv").height();
+                    $("#tableDiv").stop();
+                    $("#tableDiv").animate({ scrollTop: elementTop - (tableHeight / 2 + 2) }, { duration: 750, complete: function () { tempScrollTop = $("#tableDiv").scrollTop();}});
+                }
+            });
+
+            if (!isMark) {
+                $("#tableDiv").stop();
+                $("#tableDiv").animate({ scrollTop: optimalScrollTop }, { duration: 750 });
+            }
+        }
+
+        function ClearText() {
+            $("#playerName").val("");
+            if (RefreshScoresData()) {
+                return;
+            }
+            if (isMark) {
+                optimalScrollTop = 0;
+            }
+            else {
+                optimalScrollTop = $("#tableDiv").scrollTop();
+            }
+            isEmpty = false;
+            Typing();
+        }
+
+        function GoToGamePage() {
+            var playerName = $("#playerName").val().toLowerCase();
+            sessionStorage.setItem("playerName", playerName);
+            window.location.href = "GamePage.html";
+        }
+
+    </script>
+
+
+    <style>
+
+        body {
+            text-align: center;
+        }
+
+        .headline {
+            font-size: 50px;
+            letter-spacing: 2px;
+            color: dimgrey;
+            font-family: "Comic Sans MS", cursive, sans-serif;
+        }
+
+        #playerName {
+            text-align: center;
+            font-size:13px;
+            width: 200px;
+            height: 35px;
+        }
+
+        #startGameButton {
+            line-height: 14px;
+            font-size: 14px;
+            width: 200px;
+            height: 25px;
+            margin-bottom:50px;
+        }
+
+        #tableDiv {
+            width: 800px;
+            margin: auto;
+            overflow-y: scroll;
+            height: 255px;
+            margin-top: 5px;
+        }
+
+        #scoresTable {
+            width: 100%;
+            text-align: center;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+           #scoresTable thead th {
+               background-color: cadetblue;
+               color: white;
+               height: 30px;
+               position: sticky;
+               top: 0px;
+
+               border-top: 1px solid dimgrey;
+           }
+           #scoresTable th, #scoresTable td {
+               border-bottom: 1px solid dimgrey;
+               border-right: 1px solid dimgrey;
+           }
+           #scoresTable th:last-child, #scoresTable td:last-child {
+               border-left: 1px solid dimgrey;
+           }
+
+        .scoresHeadline {
+            font-size: 27px;
+            letter-spacing: 2px;
+            color: dimgrey;
+            font-family: "Comic Sans MS", cursive, sans-serif;
+        }
+
+        #details {
+            margin-top: 30px;
+        }
+
+        #snakeZiz {
+            margin-top: 30px;
+            width: 200px;    /* original - 600px */
+        }
+
+    </style>
+
+</head>
+
+<body dir="rtl">
+    <span class="headline">Snake Game</span>
+    <br />
+    <img id="snakeZiz" src="images/snake_ziz.png" />
+    
+    <p id="details">
+        זהו זיז, וזיז הוא נחש די זריז!
+        <br />
+        עזרו לו לאכול כמה שיותר, אך אם ינשך את עצמו - המשחק יגמר.
+        <br />
+        לזיז כוחות על מיוחדים, הוא יכול לעבור דרך קירות ומחסומים.
+        <br />
+        אך שימו לב, זהו מאמץ לא פשוט, ולאחר מכן ייתכן שלעצמו לא ישוב.
+        <br />
+    </p>
+
+    <input type="text" id="playerName" placeholder="שם השחקן" maxlength="12" onkeyup="Typing()" onclick="ClearText()"/>
+    <br />
+    <input type="button" id="startGameButton" value="התחל משחק" disabled onclick="GoToGamePage()"/>
+    <br />
+
+    <span class="scoresHeadline">לוח שיאים</span>
+    <div id="tableDiv">
+        <table id="scoresTable">
+            <thead>
+                <tr>
+                    <th>דירוג</th>
+                    <th>שם שחקן</th>
+                    <th>שיא אישי</th>
+                    <th>זמן משחק</th>
+                    <th>תאריך</th>
+                </tr>
+            </thead>
+            <tbody id="scoresTableBody"> </tbody>
+        </table>
+    </div>
+
+</body>
+</html>

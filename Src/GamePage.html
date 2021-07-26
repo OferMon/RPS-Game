@@ -1,0 +1,597 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title></title>
+    <script src="lib/jquery.js"></script>
+    <link href="lib/font-awesome-4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+    <link href="lib/w3.css" rel="stylesheet" />
+
+    <script>
+
+        // Defaults
+        const rowNumber = 30;     
+        const columnNumber = 40;
+        const maxPlayersData = 50;
+        var score = 0;
+        var snakeLength = 3;
+        var snakeSpeed = 1.0;
+        const defaultGameLoopWait = 100;
+        var movementDirection;
+        var isSnakeVertical;
+        var snakeHead;
+        var isGamePaused = false;
+        var isMessageOpen = false;
+        var stickyKeysFlag = false;
+        var moveSnakeTimeOut;
+        var timerSec = 0;
+        var timerTimeOut;
+        var scoresData = [];
+        var scoresDataVer;
+        var playerData;
+        var isPlayerFirstGame;
+
+        $(document).ready(function () {
+            // Events
+            $(document).keydown(keyPress);
+            $("#exitButton").click(HideHelpMessage);
+            $("#helpButton").click(ShowHelpMessage);
+            $("#replayButton").click(ReplayGame);
+            $("#backToHomePageButton").click(BackToHomePage);
+
+            GetHistoryData();
+            BuildCells();
+            PlaceRandomSnake();
+            PlaceFood();
+            if (isPlayerFirstGame) {
+                ShowHelpMessage();
+            }
+            else {
+                moveSnakeTimeOut = setTimeout(MoveSnake, 500);
+                timerTimeOut = setTimeout(TimerLoop, 1500);
+            }
+        });
+
+        // Return true if this is the player's first game
+        function GetHistoryData() {
+            if (sessionStorage.getItem("playerName") == null || localStorage.getItem("scoresDataVer") == null) {
+                window.location.href = "MainPage.html";
+            }
+            $(".playerName").text(sessionStorage.getItem("playerName"));
+
+            scoresDataVer = parseFloat(localStorage.getItem("scoresDataVer"));
+
+            if (localStorage.getItem("scoresData") == null) {
+                isPlayerFirstGame = true;
+                return;
+            }
+            scoresData = JSON.parse(localStorage.getItem("scoresData") || "[]");
+
+            $("#computerRecord").text(scoresData[0].personalRecord);       
+
+            playerData = scoresData.find(score => score.playerName == sessionStorage.getItem("playerName"));
+            if (playerData == null) {
+                isPlayerFirstGame = true;
+                return;
+            }
+            $("#personalRecord").text(playerData.personalRecord);
+            isPlayerFirstGame = false;
+        }
+
+        function TimerLoop() {
+            timerSec = timerSec + 1;
+            $("#playTime").text(Math.floor(timerSec / 60) + ":" + ((timerSec % 60 > 9) ? (timerSec % 60) : ("0" + timerSec % 60)));
+            timerTimeOut = setTimeout(TimerLoop, 1000);
+        }
+
+        function keyPress(key) {
+            if (isMessageOpen) return;
+            if (key.keyCode == 32) {
+                if (isGamePaused) {
+                    ContinueGame();     
+                }
+                else {
+                    PauseGame();
+                }
+            }
+            if (isGamePaused || stickyKeysFlag || key.keyCode < 37 || key.keyCode > 40) return; 
+
+            stickyKeysFlag = true;
+
+            if (isSnakeVertical) {
+                if (key.keyCode == 37) {
+                    movementDirection = 'L';         // Left
+                    isSnakeVertical = 0;
+                }
+                else if (key.keyCode == 39) {
+                    movementDirection = 'R';         // Right
+                    isSnakeVertical = 0;
+                }  
+            }
+            else {
+                if (key.keyCode == 38) {
+                    movementDirection = 'U';         // Up
+                    isSnakeVertical = 1;
+                }
+                else if (key.keyCode == 40) {
+                    movementDirection = 'D';         // Down 
+                    isSnakeVertical = 1;
+                } 
+            }
+        }
+
+        function BuildCells() {
+            var $myBoard = $("#board");
+            var $table = $("<table>").attr("id", "cellsTable");;
+            for (let i = 0; i < rowNumber; i++) {
+                var $tr = $("<tr>");
+                for (let j = 0; j < columnNumber; j++) {
+                    var $td = $("<td>").attr({ "class": "cell", "data-x": j, "data-y": i, "data-ttl": 0});
+                    $tr.prepend($td);
+                }
+                $table.prepend($tr);
+            }
+            $myBoard.append($table);
+        }
+
+        function PlaceRandomSnake() {
+            var x = GetRndInteger(2, columnNumber - 3);
+            var y = GetRndInteger(2, rowNumber - 3);
+            isSnakeVertical = GetRndInteger(0, 1);       // 1 - vertical , 0 - horizontal
+
+            GetCell(x, y).attr({ "class":"snakeBody", "data-ttl":2});
+
+            if (isSnakeVertical) {
+                if (y < rowNumber / 2) {
+                    GetCell(x, y - 1).attr({ "class": "snakeBody", "data-ttl": 1 });
+                    snakeHead = GetCell(x, y + 1).attr({ "id": "snakeHead", "data-ttl": 3 });
+                    movementDirection = 'U';
+                }
+                else {
+                    snakeHead = GetCell(x, y - 1).attr({ "id": "snakeHead", "data-ttl": 3 });
+                    GetCell(x, y + 1).attr({ "class": "snakeBody", "data-ttl": 1 });
+                    movementDirection = 'D';
+                }
+            }
+            else {
+                if (x < columnNumber / 2) {
+                    GetCell(x - 1, y).attr({ "class": "snakeBody", "data-ttl": 1 });
+                    snakeHead = GetCell(x + 1, y).attr({ "id": "snakeHead", "data-ttl": 3 });
+                    movementDirection = 'R';
+                }
+                else {
+                    snakeHead = GetCell(x - 1, y).attr({ "id": "snakeHead", "data-ttl": 3 });
+                    GetCell(x + 1, y).attr({ "class": "snakeBody", "data-ttl": 1 });
+                    movementDirection = 'L';
+                }
+            }
+        }
+
+        function PlaceFood() {
+            var $emptyCellsArray = $("[data-ttl=0]");
+            if ($emptyCellsArray.length - 1 == 0) {
+                return false;
+            }
+            var randomIndex = GetRndInteger(0, $emptyCellsArray.length-1);
+            var cell = $emptyCellsArray[randomIndex];
+            $(cell).attr({ "id": "food", "data-ttl": -1 });
+            return true; 
+        }
+
+        function GetCell(x, y) {
+            return $("[data-x=" + x + "][data-y=" + y + "]");
+        }
+
+        function GetRndInteger(min, max) {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        function MoveSnake() {
+            var x = snakeHead.attr("data-x");
+            var y = snakeHead.attr("data-y");
+
+            if (movementDirection == 'U') {
+                y++;
+            }
+            else if (movementDirection == 'D') {
+                y--;
+            }
+            else if (movementDirection == 'R') {
+                x++;
+            }
+            else if (movementDirection == 'L') {
+                x--;
+            }
+
+            // Go through a link
+            if (y < 0 || y == rowNumber || x < 0 || x == columnNumber) {
+                if (y < 0) {
+                    y = rowNumber - 1;
+                }
+                else if (y == rowNumber) {
+                    y = 0;
+                }
+                else if (x < 0) {
+                    x = columnNumber - 1;
+                }
+                else if (x == columnNumber) {
+                    x = 0;
+                }
+
+                // Punishment
+                var cost;
+                var randomProbability = Math.random();
+                if (randomProbability < 0.3)            // 0.3%
+                    cost = 1;
+                else if (randomProbability < 0.55)      // 0.25%
+                    cost = 2;
+                else if (randomProbability < 0.75)      // 0.2%
+                    cost = 3;
+                else if (randomProbability < 0.9)       // 0.15%
+                    cost = 4;
+                else                                    // 0.1%
+                    cost = 5;
+
+                score = score - cost;
+                $("#score").css("color", "red");
+                if (score < 0) {
+                    $("#score").text("שלילי");
+                    FinishGame();
+                    return;
+                }
+                $("#score").text(score);
+                snakeSpeed = snakeSpeed + 0.25;
+                $("#snakeSpeed").text("x" + (((snakeSpeed+"").length != 1) ? snakeSpeed : (snakeSpeed + ".0")));
+                $("#snakeSpeed").css("color", "red");
+            }
+
+            var $targetCell = GetCell(x, y);
+
+            // The snake got stuck on its own 
+            if ($targetCell.attr("data-ttl") > 0) {
+                $("#score").css("color", "grey");
+                $("#snakeSpeed").css("color", "grey");  
+                FinishGame();
+                return;
+            }
+
+            // The snake eats
+            if ($targetCell.attr("data-ttl") == -1) {
+                $(snakeHead).removeAttr("id");
+                snakeHead.attr("class", "snakeBody");
+                score = score + 1;
+                $("#score").text(score);
+                $("#score").css("color", "grey");
+                $("#snakeSpeed").css("color", "grey");
+                snakeLength = snakeLength + 1;
+                snakeHead = $targetCell.attr({ "id": "snakeHead", "data-ttl": snakeLength });
+
+                if (!PlaceFood()) {
+                    FinishGame();
+                }     
+            }
+
+            // The snake moves normally
+            else {
+                $(snakeHead).removeAttr("id");
+                snakeHead.attr("class", "snakeBody");
+                var ttl;
+                $("[data-ttl][data-ttl!=0][data-ttl!=-1]").each(function () {
+                    ttl = $(this).attr("data-ttl") - 1;
+                    $(this).attr("data-ttl", ttl);
+
+                    if (!ttl)
+                        $(this).attr("class","cell");
+                });
+                snakeHead = $targetCell.attr({ "id": "snakeHead", "data-ttl": snakeLength });
+            }
+
+            // Preparing for the next move
+            moveSnakeTimeOut = setTimeout(MoveSnake, defaultGameLoopWait / snakeSpeed);
+            stickyKeysFlag = false;
+        }
+
+        function RefreshScoresData() {
+            while (scoresDataVer != parseFloat(localStorage.getItem("scoresDataVer"))) {
+                GetHistoryData();
+            }
+        }
+
+        function FinishGame() {
+            clearTimeout(timerTimeOut);
+            RefreshScoresData();
+            if (isPlayerFirstGame) {
+                playerData = {
+                    playerName: sessionStorage.getItem("playerName"),
+                    personalRecord: ((score >= 0) ? score : 0),
+                    playTime: $("#playTime").text(),
+                    scoreDate: GetCurrentDate()
+                };
+                scoresData.push(playerData);
+                scoresData.sort(function (a, b) { return b.personalRecord - a.personalRecord });
+                if (scoresData.length > maxPlayersData) {
+                    scoresData.pop();
+                }
+
+                localStorage.removeItem("scoresData");
+                localStorage.setItem("scoresData", JSON.stringify(scoresData));
+
+                localStorage.removeItem("scoresDataVer");
+                scoresDataVer = Math.random();
+                localStorage.setItem("scoresDataVer", scoresDataVer);
+            }
+            else {
+                if (score > playerData.personalRecord) {
+                    playerData.personalRecord = ((score >= 0) ? score : 0);
+                    playerData.playTime = $("#playTime").text();
+                    playerData.scoreDate = GetCurrentDate();   
+
+                    scoresData.sort(function (a, b) { return b.personalRecord - a.personalRecord });
+                    localStorage.removeItem("scoresData");
+                    localStorage.setItem("scoresData", JSON.stringify(scoresData));
+
+                    localStorage.removeItem("scoresDataVer");
+                    scoresDataVer = Math.random();
+                    localStorage.setItem("scoresDataVer", scoresDataVer);
+                }
+            }
+
+            $("#scoreMessage").text((score >= 0) ? score : 0);
+            isMessageOpen = true;
+            $("#endGameMessage").fadeIn(1000);
+        }
+
+        function GetCurrentDate() {
+            var todayInfo = new Date();
+            var dd = String(todayInfo.getDate()).padStart(2, '0');
+            var mm = String(todayInfo.getMonth() + 1).padStart(2, '0');
+            var yyyy = todayInfo.getFullYear();
+
+            var date = dd + '/' + mm + '/' + yyyy;
+            return date;
+        }
+
+        function ReplayGame() {
+            $("#replayButton").prop("disabled", true);
+            $("#backToHomePageButton").prop("disabled", true);
+            $("#endGameMessage").fadeOut(1000, function () {
+                $("#replayButton").prop("disabled", false);
+                $("#backToHomePageButton").prop("disabled", false);
+
+                PlaceRandomSnake();
+                PlaceFood();
+                moveSnakeTimeOut = setTimeout(MoveSnake, 500);
+                timerTimeOut = setTimeout(TimerLoop, 1500);
+                isMessageOpen = false;
+            });
+
+            RefreshScoresData();
+            score = 0;
+            $("#score").text(score);
+            $("#score").css("color", "grey");
+            if (parseInt($("#personalRecord").text()) < playerData.personalRecord) {
+                $("#personalRecord").text(playerData.personalRecord);
+
+                if (parseInt($("#computerRecord").text()) < playerData.personalRecord) {
+                    $("#computerRecord").text(playerData.personalRecord);
+                }
+            }
+            isPlayerFirstGame = false;
+            snakeLength = 3;
+            snakeSpeed = 1.0;
+            $("#snakeSpeed").text("x" + snakeSpeed + ".0");
+            $("#snakeSpeed").css("color", "grey");
+            isGamePaused = false;
+            stickyKeysFlag = false;
+            timerSec = 0;
+            $("#playTime").text(Math.floor(timerSec / 60) + ":" + ((timerSec % 60 > 9) ? (timerSec % 60) : ("0" + timerSec % 60)));
+
+            $("[data-ttl]").each(function () {
+                $(this).attr("data-ttl", 0);
+                $(this).attr("class", "cell")
+                $(this).removeAttr("id");
+            });
+        }
+
+        function BackToHomePage() {
+            $("#backToHomePageButton").prop("disabled", true);
+            $("#replayButton").prop("disabled", true);
+            $("#endGameMessage").fadeOut(1000, function () {
+                window.location.href = "MainPage.html";
+            });
+        }
+
+        function ShowHelpMessage() {
+            if (isMessageOpen) return;
+            PauseGame();
+            isMessageOpen = true;
+            $("#helpMessage").fadeIn(1000);
+        }
+
+        function HideHelpMessage() {
+            if (!isMessageOpen) return;
+            $("#helpMessage").fadeOut(1000, function () {
+                isMessageOpen = false;
+                ContinueGame();
+            });  
+        }
+
+        function PauseGame() {
+            clearTimeout(moveSnakeTimeOut);
+            clearTimeout(timerTimeOut);
+            isGamePaused = 1;
+        }
+
+        function ContinueGame() {
+            RefreshScoresData();
+            moveSnakeTimeOut = setTimeout(MoveSnake, defaultGameLoopWait / snakeSpeed);
+            timerTimeOut = setTimeout(TimerLoop, 100);
+            isGamePaused = 0;
+        }
+
+    </script>
+
+
+    <style>
+
+        body {
+            text-align: center;
+        }
+
+        .headline {
+            font-size: 50px;
+            letter-spacing: 2px;
+            color: dimgrey;
+            font-family: "Comic Sans MS", cursive, sans-serif;
+        }
+
+        #board {
+            border: 1px solid dimgrey;
+            width: 802px;
+            height: 602px;
+            margin: auto;
+            position: relative;
+        }
+
+        #helpMessage, #endGameMessage {
+            border: 1px solid dimgrey;
+            background-color: lightsteelblue;
+            position: absolute;
+            width: 400px;
+            height: 300px;
+            top: 150px;
+            right: 200px;
+            margin: 0px;
+            padding: 0px;
+            display: none;
+            opacity: 0.9;
+        }
+        #helpMessage p {
+            margin-top: 24px;
+            text-align: center;
+            line-height: 25px;
+        }
+        #endGameMessage p {
+            font-size:32px;
+            line-height: 42px;
+            display: block;  
+        }
+
+        th {
+            text-align: center;
+            direction:ltr;
+            width: 40px;
+            color: grey;
+        }
+
+        #scoreTable {
+            margin-top: 15px;
+            border: 1px solid dimgrey;
+            border-bottom:none;
+            width: 802px;
+        }
+
+        #cellsTable {
+            border-collapse:collapse;
+        }
+        .cell {
+            background-color: white;
+            padding: 0px;
+            border: 0px;
+            width: 20px;
+            height: 20px;
+        }
+
+        .snakeBody {
+            background-color: #808080;
+        }
+        #snakeHead {
+            background-color: #4d4d4d;
+        }
+
+        #food {
+            border-radius: 50%;
+            background-color: forestgreen;
+        }
+
+        #exitButton  {
+            position: absolute;
+            left: 10px;
+            top: 10px;
+        }
+          
+    </style>
+
+</head>
+
+<body dir="rtl">
+    <span class="headline">Snake Game</span>
+    <br />
+
+    <table align="center" id="scoreTable">
+        <tr>
+            <th>שם שחקן</th>
+            <th>ניקוד נוכחי</th>
+            <th>שיא אישי</th>
+            <th>שיא מחשב</th>
+            <th>מהירות נחש</th>
+            <th>זמן משחק</th>
+            <th rowspan="2">
+                <i id="helpButton" class="fa fa-question-circle-o fa-2x"></i>
+            </th>
+
+        </tr>
+        <tr>
+            <th class="playerName" style="direction:rtl"></th>
+            <th id="score">0</th>
+            <th id="personalRecord">0</th>
+            <th id="computerRecord">0</th>
+            <th id="snakeSpeed">x1.0</th>
+            <th id="playTime">0:00</th>
+        </tr>
+    </table>
+
+    <div id="board">
+        <div id="helpMessage">
+            <i id="exitButton" class="fa fa-times-circle-o fa-lg" ></i>
+            <p>
+                ברוך הבא 
+                <span class="playerName"></span>
+                <br /><br />
+                עליך לאכול כמה שיותר תפוחים,
+                <br />
+                כל תפוח שתאכל יזקה אותך בנקודה.
+                <br />
+                על תנועת הנחש שולטים דרך חצי המקלדת,
+                <br />
+                ולחיצה על הרווח תספק לך הפסקה מרעננת.
+                <br />
+                ניתן לעבור דרך קירות - אך כל מעבר יעלה בין נקודה לחמש,
+                <br />
+                וזיז הנחש יגביר את מהירותו מבלי להתבייש.
+                <br />
+                אם בכל זאת הסתבכת וצריך שוב עזרה,
+                <br />
+                פשוט לחץ על סימן השאלה.
+                <br />
+            </p>
+        </div>
+
+        <div id="endGameMessage">
+            <p>
+                המשחק נגמר
+                <br />
+                צברת
+                <span id="scoreMessage" style="font-size:27px"></span>
+                נקודות
+                <br />
+                כל הכבוד!
+                <br />
+            </p>
+            <input type="button" id="replayButton" class="w3-btn w3-white w3-border w3-border-black w3-round-xlarge w3-small" style="margin-top:3px; margin-bottom:8px" value="התחל משחק חדש" />
+            <br />
+            <input type="button" id="backToHomePageButton" class="w3-btn w3-white w3-border w3-border-black w3-round-xlarge w3-small" value="חזור למסך הראשי" />
+        </div>
+    </div>
+</body>
+</html>
